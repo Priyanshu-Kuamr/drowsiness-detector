@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Driver Vigilance Monitor</title>
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet" />
+
+  <!-- Chart.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <!-- Socket.IO -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+
+  <style>
+    /* ── Reset & Variables ──────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #080c12;
+      --surface:   #0d1420;
+      --border:    #1a2540;
+      --text:      #c8d6f0;
+      --muted:     #4a5c80;
+      --accent:    #00e5ff;
+      --green:     #00e676;
+      --yellow:    #ffd740;
+      --orange:    #ff9100;
+      --red:       #ff1744;
+      --font-ui:   'Outfit', sans-serif;
+      --font-mono: 'Share Tech Mono', monospace;
+      --radius:    10px;
+    }
+
+    html, body { height: 100%; background: var(--bg); color: var(--text);
+                 font-family: var(--font-ui); font-size: 15px; }
+
+    /* ── Grid Layout ────────────────────────────────────────────────────── */
+    .shell {
+      display: grid;
+      grid-template-rows: 64px 1fr;
+      grid-template-columns: 260px 1fr;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    header {
+      grid-column: 1 / -1;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 0 28px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+
+    header .logo { font-family: var(--font-mono); font-size: 1.15rem;
+                   color: var(--accent); letter-spacing: 0.06em; }
+    header .dot  { width: 10px; height: 10px; border-radius: 50%;
+                   background: var(--green); box-shadow: 0 0 8px var(--green);
+                   animation: pulse 2s ease-in-out infinite; }
+    header .status-txt { font-size: .8rem; color: var(--muted); margin-left: auto; }
+    header #alert-banner {
+      padding: 6px 18px; border-radius: 6px;
+      background: var(--red); color: #fff;
+      font-weight: 700; letter-spacing: .05em;
+      display: none; animation: flash .5s step-end infinite;
+    }
+
+    @keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:.3 } }
+    @keyframes flash  { 0%,100% { opacity:1 } 50% { opacity:.1 } }
+
+    /* ── Sidebar ────────────────────────────────────────────────────────── */
+    aside {
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      padding: 24px 16px;
+      display: flex; flex-direction: column; gap: 16px;
+      overflow-y: auto;
+    }
+
+    .section-label {
+      font-size: .68rem; text-transform: uppercase;
+      letter-spacing: .12em; color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    /* Score gauge */
+    .gauge-wrap { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+    #gauge-canvas { width: 160px; height: 90px; }
+    #score-number {
+      font-family: var(--font-mono); font-size: 2.4rem;
+      color: var(--green); transition: color .3s;
+    }
+    #score-band {
+      font-size: .75rem; letter-spacing: .1em;
+      color: var(--muted); text-transform: uppercase;
+    }
+
+    /* Metric rows */
+    .metric-row {
+      display: flex; justify-content: space-between;
+      align-items: center; padding: 8px 10px;
+      background: var(--bg); border-radius: var(--radius);
+      border: 1px solid var(--border);
+    }
+    .metric-row .label { font-size: .78rem; color: var(--muted); }
+    .metric-row .value { font-family: var(--font-mono); font-size: .9rem;
+                         color: var(--accent); }
+
+    /* Status pills */
+    .pill {
+      padding: 3px 10px; border-radius: 20px;
+      font-size: .7rem; font-weight: 600; letter-spacing: .07em;
+      text-transform: uppercase;
+    }
+    .pill.ok     { background: rgba(0,230,118,.15); color: var(--green); border: 1px solid rgba(0,230,118,.4); }
+    .pill.warn   { background: rgba(255,215,64,.15); color: var(--yellow); border: 1px solid rgba(255,215,64,.4); }
+    .pill.danger { background: rgba(255,23,68,.15);  color: var(--red);   border: 1px solid rgba(255,23,68,.4); }
+
+    /* ── Main content ───────────────────────────────────────────────────── */
+    main {
+      padding: 24px;
+      overflow-y: auto;
+      display: flex; flex-direction: column; gap: 24px;
+    }
+
+    .chart-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+    }
+    .chart-card h2 {
+      font-size: .82rem; color: var(--muted);
+      text-transform: uppercase; letter-spacing: .1em;
+      margin-bottom: 14px;
+    }
+    .chart-card canvas { max-height: 200px; }
+
+    /* 2-col mini charts */
+    .mini-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+
+    /* Stat cards */
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+    }
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px 16px;
+    }
+    .stat-card .s-label { font-size: .72rem; color: var(--muted);
+                          text-transform: uppercase; letter-spacing: .08em; }
+    .stat-card .s-value { font-family: var(--font-mono); font-size: 1.7rem;
+                          color: var(--accent); margin-top: 6px; }
+
+    /* Responsive */
+    @media (max-width: 900px) {
+      .shell { grid-template-columns: 1fr; }
+      aside  { display: none; }
+      .stat-grid { grid-template-columns: 1fr 1fr; }
+      .mini-grid  { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- ── Header ──────────────────────────────────────────────────────────── -->
+  <header>
+    <div class="dot"></div>
+    <span class="logo">VIGILANCE MONITOR v2</span>
+    <span id="alert-banner">⚠ ALERT</span>
+    <span class="status-txt" id="header-time">--:--:--</span>
+  </header>
+
+  <!-- ── Sidebar ─────────────────────────────────────────────────────────── -->
+  <aside>
+    <div class="gauge-wrap">
+      <div class="section-label">Alertness Score</div>
+      <canvas id="gauge-canvas"></canvas>
+      <div id="score-number">--</div>
+      <div id="score-band">connecting…</div>
+    </div>
+
+    <div>
+      <div class="section-label">Eye Metrics</div>
+      <div class="metric-row">
+        <span class="label">EAR</span>
+        <span class="value" id="v-ear">--</span>
+      </div>
+      <div class="metric-row" style="margin-top:6px">
+        <span class="label">Blinks / min</span>
+        <span class="value" id="v-bpm">--</span>
+      </div>
+      <div class="metric-row" style="margin-top:6px">
+        <span class="label">Total blinks</span>
+        <span class="value" id="v-blinks">--</span>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-label">Mouth / Head</div>
+      <div class="metric-row">
+        <span class="label">MAR</span>
+        <span class="value" id="v-mar">--</span>
+      </div>
+      <div class="metric-row" style="margin-top:6px">
+        <span class="label">Total yawns</span>
+        <span class="value" id="v-yawns">--</span>
+      </div>
+      <div class="metric-row" style="margin-top:6px">
+        <span class="label">Pitch / Yaw</span>
+        <span class="value" id="v-headpose">--</span>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-label">Status</div>
+      <div class="metric-row">
+        <span class="label">Eye state</span>
+        <span id="pill-eye" class="pill ok">OPEN</span>
+      </div>
+      <div class="metric-row" style="margin-top:6px">
+        <span class="label">Head pose</span>
+        <span id="pill-head" class="pill ok">FORWARD</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ── Main ────────────────────────────────────────────────────────────── -->
+  <main>
+
+    <!-- Stat summary -->
+    <div class="stat-grid">
+      <div class="stat-card">
+        <div class="s-label">Score</div>
+        <div class="s-value" id="stat-score">--</div>
+      </div>
+      <div class="stat-card">
+        <div class="s-label">Blinks / min</div>
+        <div class="s-value" id="stat-bpm">--</div>
+      </div>
+      <div class="stat-card">
+        <div class="s-label">Yawns</div>
+        <div class="s-value" id="stat-yawns">--</div>
+      </div>
+      <div class="stat-card">
+        <div class="s-label">Total Blinks</div>
+        <div class="s-value" id="stat-blinks">--</div>
+      </div>
+    </div>
+
+    <!-- Main alertness chart -->
+    <div class="chart-card">
+      <h2>Alertness Score — Rolling 5 min</h2>
+      <canvas id="score-chart"></canvas>
+    </div>
+
+    <!-- Mini charts -->
+    <div class="mini-grid">
+      <div class="chart-card">
+        <h2>EAR Over Time</h2>
+        <canvas id="ear-chart"></canvas>
+      </div>
+      <div class="chart-card">
+        <h2>Head Yaw Over Time</h2>
+        <canvas id="yaw-chart"></canvas>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ── Scripts ──────────────────────────────────────────────────────────── -->
+<script>
+// ── Chart helpers ─────────────────────────────────────────────────────────────
+const CHART_DEFAULTS = {
+  responsive: true,
+  maintainAspectRatio: true,
+  animation: { duration: 0 },
+  plugins: { legend: { display: false } },
+  scales: {
+    x: { ticks: { color: '#4a5c80', maxTicksLimit: 6 },
+         grid:  { color: '#1a2540' } },
+    y: { ticks: { color: '#4a5c80' },
+         grid:  { color: '#1a2540' } }
+  }
+};
+
+function makeChart(id, color, min, max) {
+  const ctx = document.getElementById(id).getContext('2d');
+  return new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [{
+        data: [],
+        borderColor: color,
+        backgroundColor: color + '18',
+        borderWidth: 1.8,
+        pointRadius: 0,
+        fill: true,
+        tension: 0.35
+      }]
+    },
+    options: {
+      ...CHART_DEFAULTS,
+      scales: {
+        ...CHART_DEFAULTS.scales,
+        y: { ...CHART_DEFAULTS.scales.y, min, max }
+      }
+    }
+  });
+}
+
+const scoreChart = makeChart('score-chart', '#00e5ff', 0, 100);
+const earChart   = makeChart('ear-chart',   '#00e676', 0, 0.5);
+const yawChart   = makeChart('yaw-chart',   '#ffd740', -60, 60);
+
+// Rolling window for mini charts
+const EAR_HIST = { labels: [], values: [] };
+const YAW_HIST = { labels: [], values: [] };
+const MAX_MINI = 150;
+
+function pushMini(hist, t, v) {
+  hist.labels.push(t); hist.values.push(v);
+  if (hist.labels.length > MAX_MINI) {
+    hist.labels.shift(); hist.values.shift();
+  }
+}
+
+function updateChart(chart, labels, values) {
+  chart.data.labels   = labels;
+  chart.data.datasets[0].data = values;
+  chart.update('none');
+}
+
+// ── Gauge canvas ──────────────────────────────────────────────────────────────
+function drawGauge(score) {
+  const canvas = document.getElementById('gauge-canvas');
+  const ctx    = canvas.getContext('2d');
+  const W = canvas.width = canvas.offsetWidth;
+  const H = canvas.height = canvas.offsetHeight;
+  ctx.clearRect(0, 0, W, H);
+
+  const cx = W / 2, cy = H - 6;
+  const r  = Math.min(cx, cy) - 8;
+  const start = Math.PI, end = 2 * Math.PI;
+  const angle = start + (score / 100) * Math.PI;
+
+  // Track bg
+  ctx.beginPath(); ctx.arc(cx, cy, r, start, end);
+  ctx.strokeStyle = '#1a2540'; ctx.lineWidth = 10;
+  ctx.stroke();
+
+  // Active arc
+  const color = score >= 80 ? '#00e676' : score >= 50 ? '#ffd740' :
+                score >= 25 ? '#ff9100' : '#ff1744';
+  ctx.beginPath(); ctx.arc(cx, cy, r, start, angle);
+  ctx.strokeStyle = color; ctx.lineWidth = 10;
+  ctx.lineCap = 'round'; ctx.stroke();
+}
+
+// ── Socket.IO ─────────────────────────────────────────────────────────────────
+const socket = io();
+let frameCount = 0;
+
+socket.on('state_update', (d) => {
+  frameCount++;
+
+  // Header
+  document.getElementById('header-time').textContent =
+    new Date().toLocaleTimeString();
+
+  // Alert banner
+  const banner = document.getElementById('alert-banner');
+  if (d.alert) {
+    banner.style.display = 'inline-block';
+    banner.textContent   = d.alert;
+  } else {
+    banner.style.display = 'none';
+  }
+
+  // Sidebar metrics
+  document.getElementById('v-ear').textContent      = d.ear ?? '--';
+  document.getElementById('v-bpm').textContent      = d.bpm ?? '--';
+  document.getElementById('v-blinks').textContent   = d.blinks ?? '--';
+  document.getElementById('v-mar').textContent      = d.mar ?? '--';
+  document.getElementById('v-yawns').textContent    = d.yawns ?? '--';
+  document.getElementById('v-headpose').textContent =
+    d.pitch != null ? `${d.pitch > 0 ? '+' : ''}${d.pitch} / ${d.yaw > 0 ? '+' : ''}${d.yaw}` : '--';
+
+  // Pills
+  const eyePill  = document.getElementById('pill-eye');
+  const headPill = document.getElementById('pill-head');
+  const earLow   = d.ear < 0.25;
+  eyePill.textContent  = earLow ? 'CLOSED' : 'OPEN';
+  eyePill.className    = 'pill ' + (earLow ? 'danger' : 'ok');
+  const headOff = Math.abs(d.pitch) > 20 || Math.abs(d.yaw) > 30;
+  headPill.textContent = headOff ? 'DISTRACTED' : 'FORWARD';
+  headPill.className   = 'pill ' + (headOff ? 'warn' : 'ok');
+
+  // Score & gauge
+  const s = d.score ?? 100;
+  const bandColors = { ALERT:'#00e676', MILD:'#ffd740', MODERATE:'#ff9100', SEVERE:'#ff1744' };
+  document.getElementById('score-number').textContent = Math.round(s);
+  document.getElementById('score-number').style.color = bandColors[d.band] ?? '#00e5ff';
+  document.getElementById('score-band').textContent   = d.band ?? '--';
+  drawGauge(s);
+
+  // Stat row
+  document.getElementById('stat-score').textContent  = Math.round(s);
+  document.getElementById('stat-bpm').textContent    = d.bpm ?? '--';
+  document.getElementById('stat-yawns').textContent  = d.yawns ?? '--';
+  document.getElementById('stat-blinks').textContent = d.blinks ?? '--';
+
+  // Main score chart (from history provided by backend)
+  if (d.history && d.history.labels.length > 1) {
+    updateChart(scoreChart, d.history.labels, d.history.values);
+  }
+
+  // Mini charts (locally accumulated)
+  const t = (frameCount / 10).toFixed(1);
+  pushMini(EAR_HIST, t, d.ear);
+  pushMini(YAW_HIST, t, d.yaw);
+  updateChart(earChart, EAR_HIST.labels, EAR_HIST.values);
+  updateChart(yawChart, YAW_HIST.labels, YAW_HIST.values);
+});
+
+socket.on('disconnect', () => {
+  document.getElementById('score-band').textContent = 'disconnected';
+});
+
+// Initial gauge draw
+window.addEventListener('load', () => drawGauge(100));
+window.addEventListener('resize', () => {
+  const n = parseFloat(document.getElementById('score-number').textContent) || 100;
+  drawGauge(n);
+});
+</script>
+</body>
+</html>
