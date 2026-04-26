@@ -1,37 +1,37 @@
-# ─── EAR (Eye Aspect Ratio) ───────────────────────────────────────────────────
-EAR_THRESHOLD       = 0.15   # Below this → eyes considered closed
-EAR_CONSEC_FRAMES   = 12     # Frames eyes must stay closed to trigger alert
-BLINK_CONSEC_FRAMES = 3      # Short blink window (< this = just a blink)
+# ─── EAR (Eye Aspect Ratio) 
+EAR_THRESHOLD       = 0.15   
+EAR_CONSEC_FRAMES   = 12     
+BLINK_CONSEC_FRAMES = 3      
 
-# ─── MAR (Mouth Aspect Ratio — Yawn) ─────────────────────────────────────────
-MAR_THRESHOLD       = 0.75   # Above this → yawn detected
-YAWN_CONSEC_FRAMES  = 15     # Frames mouth must stay open to count as yawn
+# ─── MAR (Mouth Aspect Ratio — Yawn)
+MAR_THRESHOLD       = 0.75   
+YAWN_CONSEC_FRAMES  = 15    
 
-# ─── Head Pose ────────────────────────────────────────────────────────────────
-HEAD_PITCH_THRESHOLD = 20    # Degrees — looking down
-HEAD_YAW_THRESHOLD   = 30    # Degrees — looking sideways
-HEAD_CONSEC_FRAMES   = 25    # Frames of distracted pose before alert
+# ─── Head Pose 
+HEAD_PITCH_THRESHOLD = 20    
+HEAD_YAW_THRESHOLD   = 30    
+HEAD_CONSEC_FRAMES   = 25    
 
-# ─── Alertness Score ──────────────────────────────────────────────────────────
-SCORE_DECAY_RATE     = 2.0   # Points lost per drowsy frame
-SCORE_RECOVER_RATE   = 0.1   # Points gained per normal frame
-SCORE_YAWN_PENALTY   = 5     # Deducted per yawn
-SCORE_HEAD_PENALTY   = 0.3   # Per off-axis frame
+# ─── Alertness Score
+SCORE_DECAY_RATE     = 2.0   
+SCORE_RECOVER_RATE   = 0.1   
+SCORE_YAWN_PENALTY   = 5     
+SCORE_HEAD_PENALTY   = 0.3   
 
-# ─── Alert ────────────────────────────────────────────────────────────────────
+# ─── Alert 
 ALERT_SOUND_FILE     = "assets/alert.wav"
-ALERT_COOLDOWN_SEC   = 5     # Seconds between repeated alerts
+ALERT_COOLDOWN_SEC   = 5    
 
-# ─── Recording ────────────────────────────────────────────────────────────────
-DANGER_CLIP_SECONDS  = 5     # Seconds to save around danger event
+# ─── Recording 
+DANGER_CLIP_SECONDS  = 5     
 OUTPUT_DIR           = "recordings"
 
-# ─── Dashboard / Flask ────────────────────────────────────────────────────────
+# ─── Dashboard 
 FLASK_HOST           = "127.0.0.1"
 FLASK_PORT           = 5000
 HISTORY_LOG_FILE     = "data/session_log.csv"
 
-# ─── Camera ───────────────────────────────────────────────────────────────────
+# ─── Camera 
 CAMERA_INDEX         = 0
 FRAME_WIDTH          = 640
 FRAME_HEIGHT         = 480
